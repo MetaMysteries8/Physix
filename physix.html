@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Physix</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: #222;
+            overflow: hidden;
+            user-select: none;
+        }
+        canvas {
+            border: 1px solid #fff;
+        }
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .menu {
+            margin: 5px 0;
+            padding: 10px;
+            cursor: pointer;
+        }
+        .menu-content {
+            display: none;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+            margin-top: 5px;
+        }
+        label, input {
+            display: block;
+            margin: 5px 0;
+        }
+        #preloader {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #222;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+        }
+        #instructionsModal {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 20px;
+            text-align: center;
+            padding: 20px;
+        }
+        #instructionsModal.hidden {
+            display: none;
+        }
+        #modalContent {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+        }
+        #closeInstructions {
+            margin-top: 20px;
+            padding: 10px;
+            cursor: pointer;
+            background: #444;
+            border: none;
+            color: white;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="preloader">Loading...</div>
+    <div id="instructionsModal">
+        <div id="modalContent">
+            <h1>Welcome to Physix!</h1>
+            <p>Instructions:</p>
+            <ul>
+                <li>Use the buttons to spawn different items:</li>
+                <ul>
+                    <li>Ball</li>
+                    <li>Rectangle</li>
+                    <li>Circle</li>
+                    <li>Polygon</li>
+                    <li>Triangle</li>
+                    <li>Line</li>
+                </ul>
+                <li>Click on the canvas to place items.</li>
+                <li>Hold Ctrl and click on items to remove them.</li>
+                <li>Adjust physics settings using the sliders.</li>
+                <li>Enable "Different Physics in Shapes" to see different behaviors inside shapes.</li>
+            </ul>
+            <button id="closeInstructions">Got it!</button>
+        </div>
+    </div>
+    <div id="ui">
+        <button id="spawnBall">Spawn Ball</button>
+        <button id="rectangle">Rectangle</button>
+        <button id="circle">Circle</button>
+        <button id="polygon">Polygon</button>
+        <button id="triangle">Triangle</button>
+        <button id="line">Line</button>
+        <div class="menu">
+            Normal Physics Settings
+            <div class="menu-content" id="normalPhysicsMenu">
+                <label for="gravity">Gravity: <span id="gravityValue">0.1</span></label>
+                <input type="range" id="gravity" min="0" max="1" step="0.01" value="0.1">
+                <label for="friction">Friction: <span id="frictionValue">0.99</span></label>
+                <input type="range" id="friction" min="0" max="1" step="0.01" value="0.99">
+                <label for="elasticity">Elasticity: <span id="elasticityValue">0.75</span></label>
+                <input type="range" id="elasticity" min="0" max="1" step="0.01" value="0.75">
+            </div>
+        </div>
+        <div>
+            <label for="shapePhysics">Different Physics in Shapes:</label>
+            <input type="checkbox" id="shapePhysics">
+        </div>
+        <div class="menu">
+            Shape Physics Settings
+            <div class="menu-content" id="shapePhysicsMenu">
+                <label for="shapeFriction">Shape Friction: <span id="shapeFrictionValue">0.9</span></label>
+                <input type="range" id="shapeFriction" min="0" max="1" step="0.01" value="0.9">
+                <label for="shapeElasticity">Shape Elasticity: <span id="shapeElasticityValue">1.2</span></label>
+                <input type="range" id="shapeElasticity" min="0" max="2" step="0.01" value="1.2">
+            </div>
+        </div>
+    </div>
+    <canvas id="canvas"></canvas>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.18.0/matter.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/howler/2.2.3/howler.min.js"></script>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const { Engine, Render, Runner, Bodies, Composite, Events, Mouse, MouseConstraint, Body, Vector } = Matter;
+
+        const engine = Engine.create();
+        const world = engine.world;
+
+        const render = Render.create({
+            canvas: canvas,
+            engine: engine,
+            options: {
+                width: canvas.width,
+                height: canvas.height,
+                wireframes: false,
+                background: '#222'
+            }
+        });
+
+        Render.run(render);
+        const runner = Runner.create();
+        Runner.run(runner, engine);
+
+        const ground = Bodies.rectangle(canvas.width / 2, canvas.height, canvas.width, 10, { isStatic: true });
+        Composite.add(world, ground);
+
+        class Sound {
+            constructor(url) {
+                this.sound = new Howl({ src: [url] });
+            }
+
+            play(volume = 1, rate = 1) {
+                this.sound.volume(volume);
+                this.sound.rate(rate);
+                this.sound.play();
+            }
+        }
+
+        const bounceSound = new Sound('https://freesound.org/data/previews/66/66717_931655-lq.mp3');
+
+        let gravity = 0.1;
+        let friction = 0.99;
+        let elasticity = 0.75;
+        let shapeFriction = 0.9;
+        let shapeElasticity = 1.2;
+        let shapePhysics = false;
+
+        document.getElementById('gravity').addEventListener('input', function() {
+            gravity = parseFloat(this.value);
+            document.getElementById('gravityValue').innerText = this.value;
+            engine.world.gravity.y = gravity;
+        });
+
+        document.getElementById('friction').addEventListener('input', function() {
+            friction = parseFloat(this.value);
+            document.getElementById('frictionValue').innerText = this.value;
+        });
+
+        document.getElementById('elasticity').addEventListener('input', function() {
+            elasticity = parseFloat(this.value);
+            document.getElementById('elasticityValue').innerText = this.value;
+        });
+
+        document.getElementById('shapeFriction').addEventListener('input', function() {
+            shapeFriction = parseFloat(this.value);
+            document.getElementById('shapeFrictionValue').innerText = this.value;
+        });
+
+        document.getElementById('shapeElasticity').addEventListener('input', function() {
+            shapeElasticity = parseFloat(this.value);
+            document.getElementById('shapeElasticityValue').innerText = this.value;
+        });
+
+        document.getElementById('shapePhysics').addEventListener('change', function() {
+            shapePhysics = this.checked;
+            updateShapeColliders();
+        });
+
+        function spawnBall(x, y) {
+            const radius = 30;
+            const ball = Bodies.circle(x, y, radius, {
+                restitution: elasticity,
+                friction: 1 - friction,
+                render: { fillStyle: `hsl(${Math.random() * 360}, 50%, 50%)` }
+            });
+            balls.push(ball);
+            Composite.add(world, ball);
+        }
+
+        function spawnRectangle(x, y, width, height) {
+            const rectangle = Bodies.rectangle(x, y, width, height, {
+                isStatic: true,
+                render: { fillStyle: `hsl(${Math.random() * 360}, 50%, 50%)` }
+            });
+            shapes.push(rectangle);
+            Composite.add(world, rectangle);
+        }
+
+        function spawnCircle(x, y, radius) {
+            const circle = Bodies.circle(x, y, radius, {
+                isStatic: true,
+                render: { fillStyle: `hsl(${Math.random() * 360}, 50%, 50%)` }
+            });
+            shapes.push(circle);
+            Composite.add(world, circle);
+        }
+
+        function spawnPolygon(x, y, sides, radius) {
+            const polygon = Bodies.polygon(x, y, sides, radius, {
+                isStatic: true,
+                render: { fillStyle: `hsl(${Math.random() * 360}, 50%, 50%)` }
+            });
+            shapes.push(polygon);
+            Composite.add(world, polygon);
+        }
+
+        function spawnTriangle(x, y, size) {
+            const triangle = Bodies.polygon(x, y, 3, size, {
+                isStatic: true,
+                render: { fillStyle: `hsl(${Math.random() * 360}, 50%, 50%)` }
+            });
+            shapes.push(triangle);
+            return triangle;
+        }
+
+        function spawnLine(x1, y1, x2, y2) {
+            const line = Bodies.rectangle((x1 + x2) / 2, (y1 + y2) / 2, Math.abs(x2 - x1), Math.abs(y2 - y1), {
+                isStatic: true,
+                angle: Math.atan2(y2 - y1, x2 - x1),
+                render: { fillStyle: `hsl(${Math.random() * 360}, 50%, 50%)` }
+            });
+            shapes.push(line);
+            return line;
+        }
+
+        const balls = [];
+        const shapes = [];
+        let drawing = false;
+        let startX, startY;
+        let currentShape = 'rectangle';
+
+        function updateShapeColliders() {
+            for (let shape of shapes) {
+                shape.isSensor = shapePhysics;
+            }
+        }
+
+        document.getElementById('spawnBall').addEventListener('click', () => {
+            canvas.addEventListener('click', function clickHandler(e) {
+                const x = e.clientX;
+                const y = e.clientY;
+                spawnBall(x, y);
+                canvas.removeEventListener('click', clickHandler);
+            });
+        });
+
+        document.getElementById('rectangle').addEventListener('click', () => {
+            currentShape = 'rectangle';
+            canvas.addEventListener('click', function clickHandler(e) {
+                startX = e.clientX;
+                startY = e.clientY;
+                canvas.addEventListener('mouseup', function mouseUpHandler(ev) {
+                    const endX = ev.clientX;
+                    const endY = ev.clientY;
+                    const width = endX - startX;
+                    const height = endY - startY;
+                    spawnRectangle(startX + width / 2, startY + height / 2, Math.abs(width), Math.abs(height));
+                    canvas.removeEventListener('mouseup', mouseUpHandler);
+                });
+                canvas.removeEventListener('click', clickHandler);
+            });
+        });
+
+        document.getElementById('circle').addEventListener('click', () => {
+            currentShape = 'circle';
+            canvas.addEventListener('click', function clickHandler(e) {
+                startX = e.clientX;
+                startY = e.clientY;
+                canvas.addEventListener('mouseup', function mouseUpHandler(ev) {
+                    const endX = ev.clientX;
+                    const endY = ev.clientY;
+                    const radius = Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2));
+                    spawnCircle(startX, startY, radius);
+                    canvas.removeEventListener('mouseup', mouseUpHandler);
+                });
+                canvas.removeEventListener('click', clickHandler);
+            });
+        });
+
+        document.getElementById('polygon').addEventListener('click', () => {
+            currentShape = 'polygon';
+            canvas.addEventListener('click', function clickHandler(e) {
+                startX = e.clientX;
+                startY = e.clientY;
+                canvas.addEventListener('mouseup', function mouseUpHandler(ev) {
+                    const endX = ev.clientX;
+                    const endY = ev.clientY;
+                    const radius = Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2));
+                    spawnPolygon(startX, startY, 5, radius);
+                    canvas.removeEventListener('mouseup', mouseUpHandler);
+                });
+                canvas.removeEventListener('click', clickHandler);
+            });
+        });
+
+        document.getElementById('triangle').addEventListener('click', () => {
+            currentShape = 'triangle';
+            canvas.addEventListener('click', function clickHandler(e) {
+                startX = e.clientX;
+                startY = e.clientY;
+                canvas.addEventListener('mouseup', function mouseUpHandler(ev) {
+                    const endX = ev.clientX;
+                    const endY = ev.clientY;
+                    const size = Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2));
+                    spawnTriangle(startX, startY, size);
+                    canvas.removeEventListener('mouseup', mouseUpHandler);
+                });
+                canvas.removeEventListener('click', clickHandler);
+            });
+        });
+
+        document.getElementById('line').addEventListener('click', () => {
+            currentShape = 'line';
+            canvas.addEventListener('click', function clickHandler(e) {
+                startX = e.clientX;
+                startY = e.clientY;
+                canvas.addEventListener('mouseup', function mouseUpHandler(ev) {
+                    const endX = ev.clientX;
+                    const endY = ev.clientY;
+                    spawnLine(startX, startY, endX, endY);
+                    canvas.removeEventListener('mouseup', mouseUpHandler);
+                });
+                canvas.removeEventListener('click', clickHandler);
+            });
+        });
+
+        canvas.addEventListener('click', (e) => {
+            if (e.ctrlKey) {
+                const mousePosition = { x: e.clientX, y: e.clientY };
+                const allBodies = Composite.allBodies(world);
+                for (let body of allBodies) {
+                    if (Matter.Bounds.contains(body.bounds, mousePosition)) {
+                        Composite.remove(world, body);
+                        break;
+                    }
+                }
+            }
+        });
+
+        Events.on(engine, 'beforeUpdate', () => {
+            if (shapePhysics) {
+                for (let ball of balls) {
+                    for (let shape of shapes) {
+                        if (Matter.Bounds.overlaps(ball.bounds, shape.bounds)) {
+                            // Apply different physics when inside shape
+                            ball.restitution = shapeElasticity; // Increase elasticity inside shape
+                            ball.friction = 1 - shapeFriction; // Different friction inside shape
+                        } else {
+                            // Reset to normal physics
+                            ball.restitution = elasticity;
+                            ball.friction = 1 - friction;
+                        }
+                    }
+                }
+            }
+        });
+
+        Events.on(engine, 'collisionStart', (event) => {
+            const pairs = event.pairs;
+            for (let i = 0; i < pairs.length; i++) {
+                const pair = pairs[i];
+                const { bodyA, bodyB } = pair;
+                if (balls.includes(bodyA) || balls.includes(bodyB)) {
+                    const ball = balls.includes(bodyA) ? bodyA : bodyB;
+                    const volume = Math.min(Math.abs(ball.velocity.y) / 10, 1);
+                    const rate = 0.8 + (Math.abs(ball.velocity.y) / 20);
+                    bounceSound.play(volume, rate);
+                }
+            }
+        });
+
+        const mouse = Mouse.create(canvas);
+        const mouseConstraint = MouseConstraint.create(engine, {
+            mouse: mouse,
+            constraint: {
+                stiffness: 0.2,
+                render: { visible: false }
+            }
+        });
+
+        Composite.add(world, mouseConstraint);
+
+        function preloader() {
+            const preloader = document.getElementById('preloader');
+            preloader.style.display = 'none';
+        }
+
+        window.onload = () => {
+            setTimeout(preloader, 2000);
+        };
+
+        document.getElementById('closeInstructions').addEventListener('click', () => {
+            document.getElementById('instructionsModal').classList.add('hidden');
+        });
+
+        // Toggle menu visibility
+        document.querySelectorAll('.menu').forEach(menu => {
+            menu.addEventListener('click', () => {
+                const content = menu.querySelector('.menu-content');
+                if (content.style.display === 'block') {
+                    content.style.display = 'none';
+                } else {
+                    content.style.display = 'block';
+                }
+            });
+        });
+
+        Engine.run(engine);
+    </script>
+</body>
+</html>
